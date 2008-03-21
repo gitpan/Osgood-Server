@@ -1,5 +1,5 @@
 --- 
-abstract: Catalyst based application
+abstract: Event Repository
 author: 
   - Lauren O'Meara
 distribution_type: module
@@ -24,4 +24,4 @@ requires:
   DateTime::Format::MySQL: 0
   Osgood::Client: 0
   YAML: 0
-version: 1.0.6
+version: 1.1.0
