@@ -38,4 +38,5 @@ sql/schema.sql
 t/01app.t
 t/02pod.t
 t/03podcoverage.t
+t/10server.t
 t/controller_Event.t

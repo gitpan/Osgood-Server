@@ -27,37 +27,9 @@ Catalyst Controller.
 
 =head2 list 
 
-Takes one or more query parameters and returns a list of events.  Parameters can be: 
-
-=over 
-
-=item "action"
-
-looks for all events with this action
-
-=item "date_after"
-
-looks for all events with date greater than this date
-
-=item "date_before"
-
-looks for all events with a date less than this date
-
-=item "id"
-
-looks for all events with id greater than this number
-
-=item "limit"
-
-limits the number of events returns to the specified number
-
-=item "object"
-
-looks for all events with this object
-
-=back 
-
-If fields are invalid, an error is returned. If no matching events are found, an emtpy list is returned. 
+Takes one or more query parameters and returns a list of events.  Parameters
+should be name value pairs where the name corresponds to a resultset method
+of Event.
 
 =cut
 
@@ -76,54 +48,24 @@ sub list : Local {
 	# order query by event_id
 	$events = $events->search( undef, {prefetch => [ 'parameters', 'action', 'object' ], order_by => 'me.event_id' } );
 
-	# build search hash
-	my $object = $c->req->params->{'object'};
-	if (defined($object)) {
-		$object =~ s/\'//g;
-		$events = $events->search(
-			{'object.name' => $object},
-			{'join' => 'object'}
-		);
-	}
-	my $action = $c->req->params->{'action'};
-	if (defined($action)) {
-		$action =~ s/\'//g;
-		$events = $events->search(
-			{'action.name' => $action},
-			{'join' => 'action'}
-		);
-	}
-	my $id = $c->req->params->{'id'};
-	if (defined($id)) {
-		$id =~ s/\'//g;
-		$events = $events->search( {'me.event_id' => { '>' => $id } } );
-	}
-	my $date_after = $c->req->params->{'date_after'};
-	if (defined($date_after)) {
-		$date_after =~ s/\'//g;
-		$events = $events->search( {'me.date_occurred' => { '>' => $date_after } } );
-	}
-	my $date_before = $c->req->params->{'date_before'};
-	if (defined($date_before)) {
-		$date_before =~ s/\'//g;
-		$events = $events->search( {'me.date_occurred' => { '<' => $date_before } } );
-	}
-	my $date_equals = $c->req->params->{'date_equals'};
-	if (defined($date_equals)) {
-		$date_equals =~ s/\'//g;
-		$events = $events->search( {'me.date_occurred' => $date_equals } );
-	}
-	my $limit = $c->req->params->{'limit'};
-	if (defined($limit)) {
-		$limit =~ s/\'//g;
-		$events = $events->search( undef, { rows => $limit } );
-	}
+    my $params = $c->req->params();
+    foreach my $param (keys(%{ $params })) {
+        if($events->can($param)) {
+            $events = $events->$param($params->{$param});
+        }
+    }
 
 	$events->result_class('DBIx::Class::ResultClass::HashRefInflator');
 
+	my $limit = $c->req->params->{'limit'};
 	my $net_list = new Osgood::EventList;
+	my $count = 0;
 	if (defined($events)) {
 		while (my $event = $events->next()) {
+		    # Enforce limit this way, as prefetch breaks SQL limit
+        	if (defined($limit) && $limit <= $count) {
+        		$events = $events->search( undef, { rows => $limit } );
+        	}
 			# convert db event to net event
 			my $params = {};
 			if(scalar($event->{'parameters'})) {
@@ -142,6 +84,7 @@ sub list : Local {
 			);
 			# add net event to list
 			$net_list->add_to_events($net_event);
+			$count++;
 		}
 	}
 
