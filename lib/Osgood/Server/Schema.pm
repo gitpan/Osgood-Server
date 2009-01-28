@@ -16,29 +16,30 @@ __PACKAGE__->load_classes({
 	/]
 });
 
-sub connect
-{
-	my $self = shift;
+sub connect {
+    my $self = shift;
 
-	my $schema = $self->next::method(@_);
+    my $schema = $self->next::method(@_);
 
-	$schema->storage->dbh->do('SET @@SQL_AUTO_IS_NULL=0') if $schema;
+    if($schema && $schema->storage->can('connect_info')) {
+        if(lc($schema->storage->connect_info->[0]) =~ /mysql/) {
+            $schema->storage->dbh->do('SET @@SQL_AUTO_IS_NULL=0')
+        }
+    }
 
-	return $schema;
+    return $schema;
 }
 
-sub inflate
-{
-	my $self = shift;
-	my $yaml = new YAML::Loader $self;
+sub inflate {
+    my $self = shift;
+    my $yaml = new YAML::Loader->new($self);
 
-	return $yaml->load(@_);
+    return $yaml->load(@_);
 }
 
-sub deflate
-{
-	my $self = shift;
-	my $yaml = new YAML::Dumper;
+sub deflate {
+    my $self = shift;
+    my $yaml = YAML::Dumper->new;
 
 	return $yaml->dump(@_);
 }

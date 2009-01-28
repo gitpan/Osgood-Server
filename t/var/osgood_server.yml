@@ -3,8 +3,8 @@ name: Osgood::Server
 Model::OsgoodDB:
     schema_class: Osgood::Server::Schema
     connect_info:
-        - DBI:mysql:database=osgood;host=localhost
-        - root
+        - DBI:SQLite:dbname=t/var/osgood.db
+        -
         -
         -
             quote_char: '`'

@@ -13,9 +13,9 @@ use Catalyst::Runtime '5.70';
 # Static::Simple: will serve static files from the application's root 
 #                 directory
 
-use Catalyst qw/-Debug ConfigLoader Static::Simple/;
+use Catalyst qw/-Debug ConfigLoader Static::Simple Params::Nested/;
 
-our $VERSION = '1.2.0';
+our $VERSION = '2.0.0';
 our $AUTHORITY = 'cpan:GPHAT';
 
 # Configure the application. 
@@ -78,14 +78,14 @@ and it is a great chance to use Osgood.
 When the cancellation happens, you add a smidge of code that uses
 Osgood::Client to send an event.  You might use descriptions like:
 
-  my $event = new Osgood::Event(
+  my $event = Osgood::Event->new(
       object    => 'Order',
       action    => 'canceled',
       params    => {
           id    => 12345
       }
   );
-  my $list = new Osgood::EventList(events => [ $event ]);
+  my $list = Osgood::EventList->new(events => [ $event ]);
   $client->send($list);
 
 Meaning that Order #12345 was canceled.
@@ -136,6 +136,7 @@ Cory 'G' Watson <gphat@cpan.org>
 =head1 CONTRIBUTORS
 
 Guillermo Roditi (groditi)
+Mike Eldridge (diz)
 
 =head1 COPYRIGHT AND LICENSE
 
@@ -145,5 +146,76 @@ You can redistribute and/or modify this code under the same terms as Perl
 itself.
 
 =cut
+
+sub add_from_list {
+    my ($self, $list) = @_;
+
+    my $iter = $list->iterator;
+    # count events
+    my $count = 0;
+    my $error = undef;
+
+	my $schema = $self->model('OsgoodDB')->schema;
+	$schema->txn_begin;
+
+    while (($iter->has_next) && (!defined($error))) {
+        my $event = $iter->next;
+
+        # find or create the action
+        my $action = $self->model('OsgoodDB::Action')->find_or_create({
+            name => $event->action
+        });
+        if (!defined($action)) {
+            $error = "Error: bad action " . $event->action();
+            last;
+        }
+        # find or create the object
+        my $object = $self->model('OsgoodDB::Object')->find_or_create({
+            name => $event->object
+        });
+        if (!defined($object)) {
+            $error = "Error: bad object " . $event->object;
+            last;
+        }
+        # create event - this has to be a new thing. no find here. 
+        my $db_event = $self->model('OsgoodDB::Event')->create({
+            action_id => $action->id,
+            object_id => $object->id,
+            date_occurred => $event->date_occurred
+        });
+        if (!defined($db_event)) {
+            $error = 'Error: bad event ' . $event->object . ' '
+                . $event->action . ' ' . $event->date_occurred;
+            last;
+        }
+        # add all params
+        my $params = $event->params;
+        if (defined($params)) {
+            foreach my $param_name (keys %{$params}) {
+                my $event_param = $self->model('OsgoodDB::EventParameter')->create({
+                    event_id => $db_event->id,
+                    name => $param_name,
+                    value => $params->{$param_name}
+                });
+                if (!defined($event_param)) {
+                    $error = 'Error: bad event parameter' .  $param_name .
+                             ' ' .  $params->{$param_name};
+                }
+            }
+        }
+
+        # increment count of inserted events
+        $count++;
+    }
+
+    if (defined($error)) {      # if error, rollback
+        $count = 0;             # if error, count is zero. nothing inserted.
+        $schema->txn_rollback;
+    } else {                    # otherwise, commit
+        $schema->txn_commit;
+    }
+
+    return ($count, $error);
+}
 
 1;
